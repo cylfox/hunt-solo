@@ -593,6 +593,16 @@ local function call_porter_handler(args)
     update_timer('call_porter')
 end
 
+local function do_call_porter_handler()
+    if not CONFIG.is_porter_invisible_when_not_riding then
+        return sdk.PreHookResult.CALL_ORIGINAL
+    end
+
+    log('--> call porter! (doCall)')
+    TEMP.is_porter_called = true
+    update_timer('call_porter')
+end
+
 
 init_config()
 
@@ -758,9 +768,9 @@ sdk.hook(
 )
 
 sdk.hook(
-    sdk.find_type_definition('app.btable.PlCommand.cCallPorterInputCheck'):get_method(
-        'success(app.cPlayerBTableCommandWork)'),
-    safe_prehook(call_porter_handler)
+    sdk.find_type_definition('app.PlayerCommonSubAction.cCallPorter'):get_method(
+        'doCall()'),
+    safe_prehook(do_call_porter_handler)
 )
 
 sdk.hook(
