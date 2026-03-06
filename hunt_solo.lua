@@ -567,7 +567,12 @@ local function call_porter_handler(args)
     -- Note: Looks like cPlayerBTableCommandWork argument is called by any action?
     -- Other actions have as an argument the integer 1
 
-    if args[3] == nil or sdk.to_int64(args[3]) == 1 then
+    if args[3] == nil then
+        return sdk.PreHookResult.CALL_ORIGINAL
+    end
+
+    local ok, int_val = pcall(sdk.to_int64, args[3])
+    if ok and int_val == 1 then
         return sdk.PreHookResult.CALL_ORIGINAL
     end
 
@@ -581,7 +586,6 @@ local function call_porter_handler(args)
     end
 
     local hunter_character = player_b_table_command_work:get_Character()
-    is_master_player(hunter_character)
 
     if not CONFIG.is_porter_invisible_when_not_riding or
         not is_master_player(hunter_character) then
