@@ -58,7 +58,7 @@ local TEMP = {
 
     is_quest_end_showing = false,
 
-    otomo_locked_position = nil,
+    otomo_standby_active = false,
 }
 
 
@@ -585,26 +585,20 @@ local function otomo_entity_update_handler(args)
 
     if not is_my_otomo(otomo_character) or
         is_otomo_original_behavior_enabled() then
-        TEMP.otomo_locked_position = nil
+        if TEMP.otomo_standby_active then
+            TEMP.otomo_standby_active = false
+            if master_otomo_controller_entity.resetDesireAll then
+                master_otomo_controller_entity:resetDesireAll()
+            end
+        end
         return sdk.PreHookResult.CALL_ORIGINAL
     end
 
-    local transform = otomo_character:get_GameObject():get_Transform()
-    if transform then
-        if not TEMP.otomo_locked_position then
-            TEMP.otomo_locked_position = transform:get_Position()
-            log('> Locked otomo position')
-        else
-            transform:set_Position(TEMP.otomo_locked_position)
+    if not TEMP.otomo_standby_active then
+        TEMP.otomo_standby_active = true
+        if otomo_character.setActionRequestVerify then
+            otomo_character:setActionRequestVerify(0, 0)
         end
-    end
-
-    if otomo_character.setActionRequestVerify then
-        otomo_character:setActionRequestVerify(0, 0)
-    end
-
-    if master_otomo_controller_entity.setGoaTreePause then
-        master_otomo_controller_entity:setGoaTreePause(true)
     end
 
     log('SKIP > otomo_entity_update_handler() OTOMO')
