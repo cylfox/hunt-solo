@@ -518,13 +518,27 @@ local function is_current_quest_mainstory()
 end
 
 local function is_otomo_original_behavior_enabled()
-    if not CONFIG.is_standby_otomo_behavior_blocked or
-        is_otomo_accompany() or
+    if is_otomo_accompany() or
         TEMP.is_player_dead or
-        (not CONFIG.is_standby_otomo_behavior_blocked_in_camp_areas and is_player_in_camp_areas()) or
         is_current_quest_mainstory() then
         return true
     end
+
+    local in_camp = is_player_in_camp_areas()
+
+    -- In camp areas: use camp toggle independently
+    if in_camp then
+        if not CONFIG.is_standby_otomo_behavior_blocked_in_camp_areas then
+            return true
+        end
+        return false
+    end
+
+    -- Outside camp: use main toggle independently
+    if not CONFIG.is_standby_otomo_behavior_blocked then
+        return true
+    end
+
     return false
 end
 
