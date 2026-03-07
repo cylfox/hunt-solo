@@ -24,8 +24,9 @@ local LANG_OPTIONS = {
 
 local CONFIG = {
     mod_name = 'Hunt Solo',
-    version = '2.1.1',
+    version = '2.1.2',
     author = 'Cylfox',
+    contributors = 'Cableryge',
     language = LANG.ENG,
     show_log_window = false,
     show_json_dump_window = false,
@@ -56,13 +57,15 @@ local TEMP = {
     is_loading_npc_manager = false,
     is_loading_player_manager = false,
 
-    is_quest_end_showing = false
+    is_quest_end_showing = false,
+
+    saved_otomo_pos = nil
 }
 
 
 local CACHE = {
     mission_type = { max_time = 5 },
-    tent_area_info = { max_time = 3 },
+    tent_area_info = { max_time = 2 },
 }
 
 local TIMER = {
@@ -547,17 +550,29 @@ local function otomo_controller_entity_handler(args)
     -- local otomo_character = controller:get_field('<Character>k__BackingField')
     local otomo_character = master_otomo_controller_entity:get_Character()
 
-    if not is_my_otomo(otomo_character) or
-        is_otomo_original_behavior_enabled() then
+    if not is_my_otomo(otomo_character) or is_otomo_original_behavior_enabled() then
+        TEMP.saved_otomo_pos = nil
         return sdk.PreHookResult.CALL_ORIGINAL
     end
 
-    -- these does not work but might be related to stop otomo motion once started
-    -- master_otomo_controller_entity:stopNavigation()
-    -- master_otomo_controller_entity:setGoaTreePause()
-    -- master_otomo_controller_entity:resetDesireAll()
-    -- master_otomo_controller_entity:resetStackMoveInfoList()
-    -- master_otomo_controller_entity:resetBattle()
+
+    -- Cableryge: Teleport palico to its previous position when you leave the camp and forces it into an idle animation.
+    local transform = otomo_character:get_GameObject():get_Transform()
+    if transform then
+        if not TEMP.saved_otomo_pos then
+            TEMP.saved_otomo_pos = transform:get_Position()
+        else
+            transform:set_Position(TEMP.saved_otomo_pos)
+        end
+    end
+
+    if otomo_character.setActionRequestVerify then
+        otomo_character:setActionRequestVerify(0, 0)
+    end
+
+    if master_otomo_controller_entity.setGoaTreePause then
+        master_otomo_controller_entity:setGoaTreePause(true)
+    end
 
     log('SKIP > otomo_controller_entity_handler() OTOMO')
     return sdk.PreHookResult.SKIP_ORIGINAL
