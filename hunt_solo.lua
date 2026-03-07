@@ -56,7 +56,9 @@ local TEMP = {
     is_loading_npc_manager = false,
     is_loading_player_manager = false,
 
-    is_quest_end_showing = false
+    is_quest_end_showing = false,
+
+    otomo_locked_position = nil,
 }
 
 
@@ -577,6 +579,38 @@ local function otomo_controller_entity_handler(args)
     return sdk.PreHookResult.SKIP_ORIGINAL
 end
 
+local function otomo_entity_update_handler(args)
+    local master_otomo_controller_entity = sdk.to_managed_object(args[2])
+    local otomo_character = master_otomo_controller_entity:get_Character()
+
+    if not is_my_otomo(otomo_character) or
+        is_otomo_original_behavior_enabled() then
+        TEMP.otomo_locked_position = nil
+        return sdk.PreHookResult.CALL_ORIGINAL
+    end
+
+    local transform = otomo_character:get_GameObject():get_Transform()
+    if transform then
+        if not TEMP.otomo_locked_position then
+            TEMP.otomo_locked_position = transform:get_Position()
+            log('> Locked otomo position')
+        else
+            transform:set_Position(TEMP.otomo_locked_position)
+        end
+    end
+
+    if otomo_character.setActionRequestVerify then
+        otomo_character:setActionRequestVerify(0, 0)
+    end
+
+    if master_otomo_controller_entity.setGoaTreePause then
+        master_otomo_controller_entity:setGoaTreePause(true)
+    end
+
+    log('SKIP > otomo_entity_update_handler() OTOMO')
+    return sdk.PreHookResult.SKIP_ORIGINAL
+end
+
 local function call_porter_handler(args)
     -- Note: Looks like cPlayerBTableCommandWork argument is called by any action?
     -- Other actions have as an argument the integer 1
@@ -763,11 +797,11 @@ sdk.hook(
     safe_prehook(otomo_controller_entity_handler)
 )
 
--- Makes palico stuck
+-- Makes palico stuck and locks its position to prevent infinite run animation
 sdk.hook(
     sdk.find_type_definition('app.cMasterOtomoControllerEntity'):get_method(
         'entityUpdate()'),
-    safe_prehook(otomo_controller_entity_handler)
+    safe_prehook(otomo_entity_update_handler)
 )
 
 
