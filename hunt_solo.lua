@@ -59,6 +59,7 @@ local TEMP = {
     is_quest_end_showing = false,
 
     otomo_standby_active = false,
+    otomo_locked_position = nil,
 }
 
 
@@ -587,17 +588,22 @@ local function otomo_entity_update_handler(args)
         is_otomo_original_behavior_enabled() then
         if TEMP.otomo_standby_active then
             TEMP.otomo_standby_active = false
-            if master_otomo_controller_entity.resetDesireAll then
-                master_otomo_controller_entity:resetDesireAll()
-            end
+            TEMP.otomo_locked_position = nil
         end
         return sdk.PreHookResult.CALL_ORIGINAL
     end
 
-    if not TEMP.otomo_standby_active then
-        TEMP.otomo_standby_active = true
-        if otomo_character.setActionRequestVerify then
-            otomo_character:setActionRequestVerify(0, 0)
+    TEMP.otomo_standby_active = true
+
+    local transform = otomo_character:get_GameObject():get_Transform()
+    if transform then
+        if not TEMP.otomo_locked_position then
+            if otomo_character:get_Landed() then
+                TEMP.otomo_locked_position = transform:get_Position()
+                log('> Locked otomo position')
+            end
+        else
+            transform:set_Position(TEMP.otomo_locked_position)
         end
     end
 
@@ -706,6 +712,7 @@ sdk.hook(
     function()
         log('--> NpcManager.evLoadBefore()')
         TEMP.is_loading_npc_manager = true
+        TEMP.otomo_locked_position = nil
     end
 )
 
@@ -797,6 +804,7 @@ sdk.hook(
         'entityUpdate()'),
     safe_prehook(otomo_entity_update_handler)
 )
+
 
 
 -- PORTER BEHAVIOR
