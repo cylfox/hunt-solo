@@ -56,11 +56,7 @@ local TEMP = {
     is_loading_npc_manager = false,
     is_loading_player_manager = false,
 
-    is_quest_end_showing = false,
-
-    was_otomo_standby_active = false,
-    otomo_standby_transition_frames = 0,
-    is_otomo_standby_ready = false,
+    is_quest_end_showing = false
 }
 
 
@@ -74,8 +70,7 @@ local TIMER = {
     player_manager_loading = { delay = 10 },
     call_porter = { delay = 6 },
     ride_porter = { delay = 3 },
-    player_dead = { delay = 3 },
-    otomo_standby_ready = { delay = 5 }
+    player_dead = { delay = 3 }
 }
 
 local DUMP = {}
@@ -561,86 +556,25 @@ local function is_porter_invisible_when_not_riding_enabled()
     return true
 end
 
--- saved position when standby activates
-local saved_otomo_pos = nil
-
 local function otomo_controller_entity_handler(args)
     local master_otomo_controller_entity = sdk.to_managed_object(args[2])
+    -- local otomo_character = controller:get_field('<Character>k__BackingField')
     local otomo_character = master_otomo_controller_entity:get_Character()
 
     if not is_my_otomo(otomo_character) or
-        is_otomo_original_behavior_enabled() or
-        not TEMP.is_otomo_standby_ready then
+        is_otomo_original_behavior_enabled() then
         return sdk.PreHookResult.CALL_ORIGINAL
     end
 
+    -- these does not work but might be related to stop otomo motion once started
+    -- master_otomo_controller_entity:stopNavigation()
+    -- master_otomo_controller_entity:setGoaTreePause()
+    -- master_otomo_controller_entity:resetDesireAll()
+    -- master_otomo_controller_entity:resetStackMoveInfoList()
+    -- master_otomo_controller_entity:resetBattle()
+
     log('SKIP > otomo_controller_entity_handler() OTOMO')
     return sdk.PreHookResult.SKIP_ORIGINAL
-end
-
--- entityUpdate: let it run for animations, but lock position afterward
-local function otomo_update_prehook(args)
-    if is_game_loading() then return sdk.PreHookResult.CALL_ORIGINAL end
-
-    local storage = thread.get_hook_storage()
-    storage['freeze'] = false
-
-    pcall(function()
-        local entity = sdk.to_managed_object(args[2])
-        local character = entity:get_Character()
-        if not is_my_otomo(character) then return end
-
-        if is_otomo_original_behavior_enabled() then
-            -- Leaving standby: clear saved position
-            saved_otomo_pos = nil
-            return
-        end
-
-        storage['freeze'] = true
-        storage['entity'] = entity
-        storage['character'] = character
-
-        -- Save position on first standby frame (only after load delay)
-        if not saved_otomo_pos and TEMP.is_otomo_standby_ready then
-            local transform = character:get_GameObject():get_Transform()
-            if transform then
-                local pos = transform:get_Position()
-                saved_otomo_pos = Vector3f.new(pos.x, pos.y, pos.z)
-                log('STANDBY > saved otomo position')
-            end
-        end
-    end)
-
-    -- Let entityUpdate run so animations process
-    return sdk.PreHookResult.CALL_ORIGINAL
-end
-
-local function otomo_update_posthook(retval)
-    local storage = thread.get_hook_storage()
-    if not storage['freeze'] then return retval end
-
-    -- Only do anything after the load delay has passed
-    if not TEMP.is_otomo_standby_ready then return retval end
-
-    pcall(function()
-        local entity = storage['entity']
-        local character = storage['character']
-
-        -- Stop navigation and desires
-        entity:stopNavigation()
-        entity:resetDesireAll()
-        entity:resetStackMoveInfoList()
-
-        -- Snap position back
-        if saved_otomo_pos then
-            local transform = character:get_GameObject():get_Transform()
-            if transform then
-                transform:set_Position(saved_otomo_pos)
-            end
-        end
-    end)
-
-    return retval
 end
 
 local function call_porter_handler(args)
@@ -744,8 +678,6 @@ sdk.hook(
     function()
         log('--> NpcManager.evLoadBefore()')
         TEMP.is_loading_npc_manager = true
-        saved_otomo_pos = nil
-        TEMP.is_otomo_standby_ready = false
     end
 )
 
@@ -754,7 +686,6 @@ sdk.hook(
     function()
         log('--> NpcManager.evLoadEnd()')
         update_timer('npc_manager_loading')
-        update_timer('otomo_standby_ready')
     end
 )
 
@@ -763,8 +694,6 @@ sdk.hook(
     function()
         log('--> PlayerManager.evLoadBefore()')
         TEMP.is_loading_player_manager = true
-        saved_otomo_pos = nil
-        TEMP.is_otomo_standby_ready = false
     end
 )
 
@@ -816,20 +745,29 @@ sdk.hook(
 
 -- OTOMO BEHAVIOR
 
--- Block new navigation from starting
+-- Other useful functions
+-- app.cMasterOtomoControllerEntity.selectTarget(app.OtomoDef.THINK_TARGET_TYPE)
+-- app.cMasterOtomoControllerEntity.entityLateUpdate()
+-- app.OtomoCharacter.setActionRequestVerify(ace.ACTION_ID, app.OtomoDef.APPEND_DATA_TYPE)
+
+-- These two are for preventing movements
 sdk.hook(
     sdk.find_type_definition('app.cMasterOtomoControllerEntity'):get_method(
         'startNavigation(System.Boolean)'),
     safe_prehook(otomo_controller_entity_handler)
 )
 
+sdk.hook(
+    sdk.find_type_definition('app.cOtomoControllerEntityBase'):get_method(
+        'entityStart()'),
+    safe_prehook(otomo_controller_entity_handler)
+)
 
--- Let entityUpdate run (animations alive), but lock position in post-hook
+-- Makes palico stuck
 sdk.hook(
     sdk.find_type_definition('app.cMasterOtomoControllerEntity'):get_method(
         'entityUpdate()'),
-    otomo_update_prehook,
-    otomo_update_posthook
+    safe_prehook(otomo_controller_entity_handler)
 )
 
 
@@ -904,10 +842,6 @@ re.on_frame(function()
     end)
     evaluate_timer('player_manager_loading', function()
         TEMP.is_loading_player_manager = false
-    end)
-    evaluate_timer('otomo_standby_ready', function()
-        TEMP.is_otomo_standby_ready = true
-        log('> otomo standby ready')
     end)
     evaluate_timer('call_porter', function()
         TEMP.is_porter_called = false
