@@ -59,6 +59,7 @@ local TEMP = {
     is_quest_end_showing = false,
 
     otomo_standby_active = false,
+    otomo_character = nil,
     otomo_locked_position = nil,
 }
 
@@ -588,27 +589,39 @@ local function otomo_entity_update_handler(args)
         is_otomo_original_behavior_enabled() then
         if TEMP.otomo_standby_active then
             TEMP.otomo_standby_active = false
+            TEMP.otomo_character = nil
             TEMP.otomo_locked_position = nil
         end
         return sdk.PreHookResult.CALL_ORIGINAL
     end
 
     TEMP.otomo_standby_active = true
+    TEMP.otomo_character = otomo_character
 
-    local transform = otomo_character:get_GameObject():get_Transform()
-    if transform then
-        if not TEMP.otomo_locked_position then
-            if otomo_character:get_Landed() then
-                TEMP.otomo_locked_position = transform:get_Position()
-                log('> Locked otomo position')
+    -- Already frozen in idle
+    if TEMP.otomo_locked_position then
+        return sdk.PreHookResult.SKIP_ORIGINAL
+    end
+
+    -- Reset desires every frame to push the behavior tree toward idle
+    master_otomo_controller_entity:resetDesireAll()
+
+    -- Only lock position once the palico is landed AND in the idle action
+    if otomo_character:get_Landed() then
+        local ok, action = pcall(function() return otomo_character:get_CurrentAction() end)
+        if ok and action then
+            local ok2, aname = pcall(function() return action:get_type_definition():get_name() end)
+            if ok2 and aname == 'cIdle' then
+                local transform = otomo_character:get_GameObject():get_Transform()
+                if transform then
+                    TEMP.otomo_locked_position = transform:get_Position()
+                    log('> Locked otomo position in idle')
+                end
             end
-        else
-            transform:set_Position(TEMP.otomo_locked_position)
         end
     end
 
-    log('SKIP > otomo_entity_update_handler() OTOMO')
-    return sdk.PreHookResult.SKIP_ORIGINAL
+    return sdk.PreHookResult.CALL_ORIGINAL
 end
 
 local function call_porter_handler(args)
@@ -712,6 +725,7 @@ sdk.hook(
     function()
         log('--> NpcManager.evLoadBefore()')
         TEMP.is_loading_npc_manager = true
+        TEMP.otomo_character = nil
         TEMP.otomo_locked_position = nil
     end
 )
@@ -888,6 +902,14 @@ re.on_frame(function()
     evaluate_timer('player_dead', function()
         TEMP.is_player_dead = false
     end)
+
+    -- Otomo position lock (runs every frame, keeps palico frozen during idle transition and after)
+    if TEMP.otomo_standby_active and TEMP.otomo_character and TEMP.otomo_locked_position then
+        local transform = TEMP.otomo_character:get_GameObject():get_Transform()
+        if transform then
+            transform:set_Position(TEMP.otomo_locked_position)
+        end
+    end
 end)
 
 
