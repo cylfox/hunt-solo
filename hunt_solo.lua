@@ -949,6 +949,14 @@ sdk.hook(
 )
 
 sdk.hook(
+    sdk.find_type_definition('app.cFastTravelController'):get_method('travel'),
+    safe_prehook(function()
+        TEMP.is_porter_called = true
+        update_timer('call_porter')
+    end)
+)
+
+sdk.hook(
     sdk.find_type_definition('app.PorterUtil'):get_method(
         'isVisibleInLifeArea(app.PorterCharacter)'),
     safe_prehook(function(args)
