@@ -24,20 +24,21 @@ local LANG_OPTIONS = {
 
 local CONFIG = {
     mod_name = 'Hunt Solo',
-    version = '2.1.1',
+    version = '2.2.0',
     author = 'Cylfox',
+    contributors = 'Cableryge',
     language = LANG.ENG,
     show_log_window = false,
     show_json_dump_window = false,
     is_advisor_target_skipped = true,
-    is_advisor_target_skipped_in_camp_areas = true,
+    is_advisor_target_skipped_in_camp_areas = false,
     is_npc_support_hunters_target_skipped = true,
     is_npc_support_hunters_target_skipped_in_mainstory = false,
     is_standby_otomo_behavior_blocked = true,
     is_standby_otomo_behavior_blocked_in_camp_areas = true,
     is_porter_invisible_when_fishing = true,
     is_porter_invisible_when_not_riding = true,
-    is_porter_invisible_in_camp_areas = true,
+    is_porter_invisible_in_camp_areas = false,
 }
 
 local TEMP = {
@@ -92,14 +93,14 @@ local STRINGS = {
         [LANG.CHI] = '语言',
     },
     is_advisor_target_skipped = {
-        [LANG.ENG] = 'Skip Alma tracking',
-        [LANG.SPA] = 'Saltar seguimiento de Alma',
+        [LANG.ENG] = 'Skip advisor tracking',
+        [LANG.SPA] = 'Saltar seguimiento de encargado',
         [LANG.JAP] = 'アルマ追跡をスキップ',
         [LANG.CHI] = '跳过阿尔玛追踪',
     },
     is_advisor_target_skipped_in_camp_areas = {
-        [LANG.ENG] = 'Skip Alma tracking in camp areas (caution)',
-        [LANG.SPA] = 'Saltar seguimiento de Alma en campamentos (cuidado)',
+        [LANG.ENG] = 'Skip advisor tracking in camp areas (caution)',
+        [LANG.SPA] = 'Saltar seguimiento de encargado en campamentos (cuidado)',
         [LANG.JAP] = 'キャンプエリアでアルマ追跡をスキップ（注意）',
         [LANG.CHI] = '在营地区域跳过阿尔玛追踪（注意）',
     },
@@ -384,7 +385,7 @@ end
 local function get_npc_id(npc_accessor)
     -- Known NpcIds
     --
-    -- 8 - Alma
+    -- 8 - Advisor
     -- 6 - Rosso
     -- 9 - Olivia
     -- 27 - Alessa
@@ -643,7 +644,7 @@ local function otomo_entity_update_handler(args)
         local lp = TEMP.otomo_locked_position
         local dx = pos.x - lp.x
         local dz = pos.z - lp.z
-        if dx*dx + dz*dz > 25 then  -- moved >5 units from locked position
+        if dx * dx + dz * dz > 25 then -- moved >5 units from locked position
             log('> Otomo moved from locked position, starting cooldown')
             start_otomo_standby_cooldown()
             return sdk.PreHookResult.CALL_ORIGINAL
@@ -653,7 +654,7 @@ local function otomo_entity_update_handler(args)
     end
 
     -- Not yet locked — clear follow target and wait for idle
-    master_otomo_controller_entity:selectTarget(32)  -- THINK_TARGET_TYPE.NONE = 32
+    master_otomo_controller_entity:selectTarget(32) -- THINK_TARGET_TYPE.NONE = 32
 
     local ok, action = pcall(function() return otomo_character:get_CurrentAction() end)
     if ok and action then
@@ -827,7 +828,7 @@ local function is_advisor_target_skip_enabled()
     return true
 end
 
--- Prevents Alma from picking up a new follow target
+-- Prevents Advisor from picking up a new follow target
 sdk.hook(
     sdk.find_type_definition('app.NpcPartnerUtil'):get_method(
         'getTarget(app.NpcAccessor, app.NpcPartnerDef.STREAK_TARGET_TYPE_Fixed)'),
@@ -846,8 +847,8 @@ sdk.hook(
     end)
 )
 
--- Clears Alma's current follow target every frame (equivalent to selectTarget(32) for the otomo).
--- get_IsAdvisor() distinguishes Alma from other partner NPCs without needing an ID lookup.
+-- Clears Advisor's current follow target every frame (equivalent to selectTarget(32) for the otomo).
+-- get_IsAdvisor() distinguishes Advisor from other partner NPCs without needing an ID lookup.
 -- Clear target + clearAIMove each frame so AI transitions to idle; CALL_ORIGINAL so animations update.
 -- updateExternal() is skipped separately to prevent navigation commands from being reissued.
 sdk.hook(
@@ -876,7 +877,7 @@ sdk.hook(
 )
 
 -- NpcPartnerController.updateExternal() drives navigation separately from entityUpdate.
--- Navigate via _Access -> get_PartnerContext() -> get_IsAdvisor() to identify Alma.
+-- Navigate via _Access -> get_PartnerContext() -> get_IsAdvisor() to identify Advisor.
 sdk.hook(
     sdk.find_type_definition('app.NpcPartnerController'):get_method('updateExternal()'),
     safe_prehook(function(args)
