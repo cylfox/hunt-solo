@@ -59,6 +59,7 @@ local TEMP = {
     is_quest_end_showing = false,
 
     otomo_standby_active = false,
+    otomo_standby_cooldown = false,
     otomo_character = nil,
 
     otomo_locked_position = nil,
@@ -73,6 +74,8 @@ local CACHE = {
 local TIMER = {
     npc_manager_loading = { delay = 10 },
     player_manager_loading = { delay = 10 },
+    otomo_standby_cooldown = { delay = 4 },
+
     call_porter = { delay = 6 },
     ride_porter = { delay = 3 },
     player_dead = { delay = 3 }
@@ -429,6 +432,7 @@ local function is_otomo_accompany()
 end
 
 local function is_my_otomo(otomo_character)
+    if not otomo_character then return false end
     local otomo_context = otomo_character:get_OtomoContext()
 
     local is_master = otomo_context:get_IsMaster()
@@ -561,7 +565,17 @@ local function is_porter_invisible_when_not_riding_enabled()
     return true
 end
 
+local function start_otomo_standby_cooldown()
+    TEMP.otomo_standby_cooldown = true
+    TEMP.otomo_standby_active = false
+    TEMP.otomo_character = nil
+    TEMP.otomo_locked_position = nil
+    update_timer('otomo_standby_cooldown')
+    log('> Otomo standby cooldown started')
+end
+
 local function otomo_controller_entity_handler(args)
+    if TEMP.otomo_standby_cooldown then return sdk.PreHookResult.CALL_ORIGINAL end
     local master_otomo_controller_entity = sdk.to_managed_object(args[2])
     -- local otomo_character = controller:get_field('<Character>k__BackingField')
     local otomo_character = master_otomo_controller_entity:get_Character()
@@ -583,6 +597,8 @@ local function otomo_controller_entity_handler(args)
 end
 
 local function otomo_entity_update_handler(args)
+    if TEMP.otomo_standby_cooldown then return sdk.PreHookResult.CALL_ORIGINAL end
+
     local master_otomo_controller_entity = sdk.to_managed_object(args[2])
     local otomo_character = master_otomo_controller_entity:get_Character()
 
@@ -591,7 +607,6 @@ local function otomo_entity_update_handler(args)
         if TEMP.otomo_standby_active then
             TEMP.otomo_standby_active = false
             TEMP.otomo_character = nil
-            TEMP.otomo_warped_to_player = false
             TEMP.otomo_locked_position = nil
         end
         return sdk.PreHookResult.CALL_ORIGINAL
@@ -600,25 +615,57 @@ local function otomo_entity_update_handler(args)
     TEMP.otomo_standby_active = true
     TEMP.otomo_character = otomo_character
 
-    -- Already frozen in idle
+    -- Only interfere when palico is on the ground.
+    -- If it's on the Seikret (fast travel) get_Landed() returns false — release the lock
+    -- so the game can handle travel and spawning at the destination freely.
+    if not otomo_character:get_Landed() then
+        if TEMP.otomo_locked_position then
+            log('> Otomo not landed while locked (Seikret?), starting cooldown')
+            start_otomo_standby_cooldown()
+        end
+        return sdk.PreHookResult.CALL_ORIGINAL
+    end
+
+    -- Palico is on the ground.
     if TEMP.otomo_locked_position then
+        local go = otomo_character:get_GameObject()
+        local transform = go and go:get_Transform()
+        if not transform then
+            -- Transform unavailable — palico may be spawning; release lock to be safe
+            start_otomo_standby_cooldown()
+            return sdk.PreHookResult.CALL_ORIGINAL
+        end
+        local pos = transform:get_Position()
+        if not pos then
+            start_otomo_standby_cooldown()
+            return sdk.PreHookResult.CALL_ORIGINAL
+        end
+        local lp = TEMP.otomo_locked_position
+        local dx = pos.x - lp.x
+        local dz = pos.z - lp.z
+        if dx*dx + dz*dz > 25 then  -- moved >5 units from locked position
+            log('> Otomo moved from locked position, starting cooldown')
+            start_otomo_standby_cooldown()
+            return sdk.PreHookResult.CALL_ORIGINAL
+        end
+        master_otomo_controller_entity:selectTarget(32)
         return sdk.PreHookResult.SKIP_ORIGINAL
     end
 
-    -- Set think target to NONE (32) so the palico has no player to follow, transitioning to idle.
+    -- Not yet locked — clear follow target and wait for idle
     master_otomo_controller_entity:selectTarget(32)  -- THINK_TARGET_TYPE.NONE = 32
 
-    -- Only lock position once the palico is landed AND in the idle action
-    if otomo_character:get_Landed() then
-        local ok, action = pcall(function() return otomo_character:get_CurrentAction() end)
-        if ok and action then
-            local ok2, aname = pcall(function() return action:get_type_definition():get_name() end)
-            if ok2 and aname == 'cIdle' then
-                local transform = otomo_character:get_GameObject():get_Transform()
-                if transform then
-                    TEMP.otomo_locked_position = transform:get_Position()
-                    log('> Locked otomo position in idle')
-                end
+    local ok, action = pcall(function() return otomo_character:get_CurrentAction() end)
+    if ok and action then
+        local ok2, aname = pcall(function() return action:get_type_definition():get_name() end)
+        if ok2 and aname == 'cIdle' then
+            local go = otomo_character:get_GameObject()
+            local transform = go and go:get_Transform()
+            if transform then
+                local p = transform:get_Position()
+                -- Store as plain Lua numbers so comparisons are always against the snapshot
+                TEMP.otomo_locked_position = { x = p.x, y = p.y, z = p.z }
+                log('> Locked otomo position in idle')
             end
         end
     end
@@ -727,9 +774,8 @@ sdk.hook(
     function()
         log('--> NpcManager.evLoadBefore()')
         TEMP.is_loading_npc_manager = true
-        TEMP.otomo_character = nil
         TEMP.otomo_warped_to_player = false
-        TEMP.otomo_locked_position = nil
+        start_otomo_standby_cooldown()
     end
 )
 
@@ -738,6 +784,7 @@ sdk.hook(
     function()
         log('--> NpcManager.evLoadEnd()')
         update_timer('npc_manager_loading')
+        update_timer('otomo_standby_cooldown')
     end
 )
 
@@ -746,6 +793,7 @@ sdk.hook(
     function()
         log('--> PlayerManager.evLoadBefore()')
         TEMP.is_loading_player_manager = true
+        start_otomo_standby_cooldown()
     end
 )
 
@@ -754,6 +802,7 @@ sdk.hook(
     function()
         log('--> PlayerManager.evLoadEnd()')
         update_timer('player_manager_loading')
+        update_timer('otomo_standby_cooldown')
     end
 )
 
@@ -893,6 +942,10 @@ re.on_frame(function()
     evaluate_timer('npc_manager_loading', function()
         TEMP.is_loading_npc_manager = false
     end)
+    evaluate_timer('otomo_standby_cooldown', function()
+        TEMP.otomo_standby_cooldown = false
+        log('> Otomo standby cooldown ended')
+    end)
     evaluate_timer('player_manager_loading', function()
         TEMP.is_loading_player_manager = false
     end)
@@ -906,13 +959,8 @@ re.on_frame(function()
         TEMP.is_player_dead = false
     end)
 
-    -- Otomo position lock (runs every frame, keeps palico frozen during idle transition and after)
-    if TEMP.otomo_standby_active and TEMP.otomo_character and TEMP.otomo_locked_position then
-        local transform = TEMP.otomo_character:get_GameObject():get_Transform()
-        if transform then
-            transform:set_Position(TEMP.otomo_locked_position)
-        end
-    end
+    -- No position forcing here — SKIP_ORIGINAL in entityUpdate holds the palico in place.
+    -- Forcing position fought with the Seikret during fast travel, preventing the palico from traveling.
 end)
 
 
