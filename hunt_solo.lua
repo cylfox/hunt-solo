@@ -146,6 +146,30 @@ local STRINGS = {
         [LANG.JAP] = 'キャンプエリアでセクレトを非表示',
         [LANG.CHI] = '在营地区域隐藏塞克雷特',
     },
+    section_handler = {
+        [LANG.ENG] = 'Handler',
+        [LANG.SPA] = 'Encargado',
+        [LANG.JAP] = 'ハンドラー',
+        [LANG.CHI] = '随从官',
+    },
+    section_npc_support_hunters = {
+        [LANG.ENG] = 'NPC Support Hunters',
+        [LANG.SPA] = 'Cazadores de apoyo (NPC)',
+        [LANG.JAP] = 'NPCサポートハンター',
+        [LANG.CHI] = 'NPC支援猎人',
+    },
+    section_palico = {
+        [LANG.ENG] = 'Palico',
+        [LANG.SPA] = 'Palico',
+        [LANG.JAP] = 'アイルー',
+        [LANG.CHI] = '随从猫',
+    },
+    section_seikret = {
+        [LANG.ENG] = 'Seikret',
+        [LANG.SPA] = 'Seikret',
+        [LANG.JAP] = 'セクレト',
+        [LANG.CHI] = '塞克雷特',
+    },
     show_log_window = {
         [LANG.ENG] = 'Show log window',
         [LANG.SPA] = 'Mostrar logs',
@@ -1032,14 +1056,30 @@ re.on_draw_ui(function()
     local changes = {}
 
     if imgui.tree_node(get_mod_name()) then
+        imgui.spacing()
         table.insert(changes, { render_combobox('language', LANG_OPTIONS) })
+        imgui.spacing()
+        imgui.spacing()
+        imgui.text_colored(get_string('section_handler'), 0xFFE6D8AD)
         imgui.spacing()
         table.insert(changes, { render_checkbox('is_advisor_target_skipped') })
         table.insert(changes, { render_checkbox('is_advisor_target_skipped_in_camp_areas') })
+        imgui.spacing()
+        imgui.spacing()
+        imgui.text_colored(get_string('section_npc_support_hunters'), 0xFFE6D8AD)
+        imgui.spacing()
         table.insert(changes, { render_checkbox('is_npc_support_hunters_target_skipped') })
         table.insert(changes, { render_checkbox('is_npc_support_hunters_target_skipped_in_mainstory') })
+        imgui.spacing()
+        imgui.spacing()
+        imgui.text_colored(get_string('section_palico'), 0xFFE6D8AD)
+        imgui.spacing()
         table.insert(changes, { render_checkbox('is_standby_otomo_behavior_blocked') })
         table.insert(changes, { render_checkbox('is_standby_otomo_behavior_blocked_in_camp_areas') })
+        imgui.spacing()
+        imgui.spacing()
+        imgui.text_colored(get_string('section_seikret'), 0xFFE6D8AD)
+        imgui.spacing()
         table.insert(changes, { render_checkbox('is_porter_invisible_when_fishing') })
         table.insert(changes, { render_checkbox('is_porter_invisible_when_not_riding') })
         table.insert(changes, { render_checkbox('is_porter_invisible_in_camp_areas') })
