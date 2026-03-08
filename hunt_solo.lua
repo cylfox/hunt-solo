@@ -820,6 +820,14 @@ sdk.hook(
 
 -- ADVISOR AND SUPPORT HUNTERS BEHAVIOR
 
+local function is_advisor_target_skip_enabled()
+    if not CONFIG.is_advisor_target_skipped then return false end
+    if is_current_quest_mainstory() then return false end
+    if not CONFIG.is_advisor_target_skipped_in_camp_areas and is_player_in_camp_areas() then return false end
+    return true
+end
+
+-- Prevents Alma from picking up a new follow target
 sdk.hook(
     sdk.find_type_definition('app.NpcPartnerUtil'):get_method(
         'getTarget(app.NpcAccessor, app.NpcPartnerDef.STREAK_TARGET_TYPE_Fixed)'),
@@ -827,12 +835,7 @@ sdk.hook(
         local npc_accessor = sdk.to_managed_object(args[3])
         local npc_id = get_npc_id(npc_accessor)
 
-        if CONFIG.is_advisor_target_skipped and npc_id == 8 then
-            if (not CONFIG.is_advisor_target_skipped_in_camp_areas and is_player_in_camp_areas()) or
-                is_current_quest_mainstory() then
-                return sdk.PreHookResult.CALL_ORIGINAL
-            end
-
+        if npc_id == 8 and is_advisor_target_skip_enabled() then
             log('SKIP --> getTarget(...) ADVISOR')
             return sdk.PreHookResult.SKIP_ORIGINAL
         elseif (CONFIG.is_npc_support_hunters_target_skipped and npc_id ~= 8) or
@@ -840,6 +843,58 @@ sdk.hook(
             log('SKIP --> getTarget(...) OTHER(' .. npc_id .. ')')
             return sdk.PreHookResult.SKIP_ORIGINAL
         end
+    end)
+)
+
+-- Clears Alma's current follow target every frame (equivalent to selectTarget(32) for the otomo).
+-- get_IsAdvisor() distinguishes Alma from other partner NPCs without needing an ID lookup.
+-- Clear target + clearAIMove each frame so AI transitions to idle; CALL_ORIGINAL so animations update.
+-- updateExternal() is skipped separately to prevent navigation commands from being reissued.
+sdk.hook(
+    sdk.find_type_definition('app.cNpcControllerEntityBase'):get_method('entityUpdate()'),
+    safe_prehook(function(args)
+        if not is_advisor_target_skip_enabled() then return sdk.PreHookResult.CALL_ORIGINAL end
+
+        local controller_entity = sdk.to_managed_object(args[2])
+
+        local ok1, context_holder = pcall(function() return controller_entity:get_NpcContextHolder() end)
+        if not ok1 or not context_holder then return sdk.PreHookResult.CALL_ORIGINAL end
+
+        local ok2, partner_ctx = pcall(function() return context_holder:get_Partner() end)
+        if not ok2 or not partner_ctx then return sdk.PreHookResult.CALL_ORIGINAL end
+
+        local ok3, is_advisor = pcall(function() return partner_ctx:get_IsAdvisor() end)
+        if not ok3 or not is_advisor then return sdk.PreHookResult.CALL_ORIGINAL end
+
+        pcall(function()
+            local target_ctrl = controller_entity:get_TargetController()
+            if target_ctrl then target_ctrl:clearTarget() end
+        end)
+
+        return sdk.PreHookResult.CALL_ORIGINAL
+    end)
+)
+
+-- NpcPartnerController.updateExternal() drives navigation separately from entityUpdate.
+-- Navigate via _Access -> get_PartnerContext() -> get_IsAdvisor() to identify Alma.
+sdk.hook(
+    sdk.find_type_definition('app.NpcPartnerController'):get_method('updateExternal()'),
+    safe_prehook(function(args)
+        if not is_advisor_target_skip_enabled() then return sdk.PreHookResult.CALL_ORIGINAL end
+
+        local pc = sdk.to_managed_object(args[2])
+
+        local ok1, accessor = pcall(function() return pc:get_field('_Access') end)
+        if not ok1 or not accessor then return sdk.PreHookResult.CALL_ORIGINAL end
+
+        local ok2, partner_ctx = pcall(function() return accessor:get_PartnerContext() end)
+        if not ok2 or not partner_ctx then return sdk.PreHookResult.CALL_ORIGINAL end
+
+        local ok3, is_advisor = pcall(function() return partner_ctx:get_IsAdvisor() end)
+        if not ok3 or not is_advisor then return sdk.PreHookResult.CALL_ORIGINAL end
+
+        log('SKIP > advisor updateExternal()')
+        return sdk.PreHookResult.SKIP_ORIGINAL
     end)
 )
 
