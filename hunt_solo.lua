@@ -60,6 +60,7 @@ local TEMP = {
 
     otomo_standby_active = false,
     otomo_character = nil,
+
     otomo_locked_position = nil,
 }
 
@@ -590,6 +591,7 @@ local function otomo_entity_update_handler(args)
         if TEMP.otomo_standby_active then
             TEMP.otomo_standby_active = false
             TEMP.otomo_character = nil
+            TEMP.otomo_warped_to_player = false
             TEMP.otomo_locked_position = nil
         end
         return sdk.PreHookResult.CALL_ORIGINAL
@@ -603,8 +605,8 @@ local function otomo_entity_update_handler(args)
         return sdk.PreHookResult.SKIP_ORIGINAL
     end
 
-    -- Reset desires every frame to push the behavior tree toward idle
-    master_otomo_controller_entity:resetDesireAll()
+    -- Set think target to NONE (32) so the palico has no player to follow, transitioning to idle.
+    master_otomo_controller_entity:selectTarget(32)  -- THINK_TARGET_TYPE.NONE = 32
 
     -- Only lock position once the palico is landed AND in the idle action
     if otomo_character:get_Landed() then
@@ -726,6 +728,7 @@ sdk.hook(
         log('--> NpcManager.evLoadBefore()')
         TEMP.is_loading_npc_manager = true
         TEMP.otomo_character = nil
+        TEMP.otomo_warped_to_player = false
         TEMP.otomo_locked_position = nil
     end
 )
